@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Jira Project Timelogs</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <h1>Jira Project Timelogs</h1>
+
+    <!-- Search bar for filtering projects by name -->
+    <input type="text" id="projectSearch" placeholder="Enter project name">
+    <button id="searchProjectButton">Search</button>
+
+    <!-- Button to fetch and show all projects -->
+    <button id="showAllProjects">Show All Projects</button>
+
+    <!-- List where all or filtered projects are displayed -->
+    <ul id="projectList"></ul>
+
+    <!-- Section where timelogs will be shown for a selected project -->
+    <div id="timelogSection" style="display: none;">
+        <h2>Project Timelogs</h2>
+        <div id="timelogResults"></div>
+    </div>
+
+    <!-- Date Picker for filtering by date -->
+    <label for="reportDate">Select Date:</label>
+    <input type="date" id="reportDate">
+
+
+    <!-- Button to fetch all employees' complete timelogs report for a specific date and fields -->
+    <button id="generateCompleteReport">Generate Report</button>
+
+    <!-- Section where the complete report will be displayed -->
+    <div id="completeReportSection" style="display: none;">
+        <h2>Complete Employee Timelogs Report</h2>
+        <div id="completeReportResults"></div>
+    </div>
+
+    <h1>Fetch Employee Work Logs</h1>
+
+    <!-- Input for employee name or ID -->
+    <label for="employeeName">Employee Name or ID:</label>
+    <input type="text" id="employeeName">
+
+    <!-- Date picker for specific date filter -->
+    <label for="logDate">Select Date:</label>
+    <input type="date" id="logDate">
+
+
+    <button id="fetchLogs">Fetch Logs</button>
+
+    <!-- Display section for the work logs -->
+    <div id="workLogSection" style="display: none;">
+        <h2>Work Logs</h2>
+        <div id="workLogs"></div>
+    </div>
+
+
+    <script>
+        $(document).ready(function() {
+            // Function to fetch projects from the backend
+            function fetchProjects(projectName = '') {
+                $.get(`/projects`, function(data) {
+                    console.log("Projects loaded:", data);  // Debugging line
+                    $('#projectList').empty();  // Clear any previous list
+                    data.forEach(project => {
+                        // Filter by project name if projectName is provided
+                        if (projectName === '' || project.name.toLowerCase().includes(projectName.toLowerCase())) {
+                            // Append each project as a list item with data-id attribute for later reference
+                            $('#projectList').append(`<li data-id="${project.id}">${project.name}</li>`);
+                        }
+                    });
+                }).fail(function() {
+                    console.log("Failed to load projects");
+                    alert("Error loading projects. Please check your backend.");
+                });
+            }
+
+            // Fetch and show all projects when the "Show All Projects" button is clicked
+            $('#showAllProjects').on('click', function() {
+                fetchProjects();  // Calls fetchProjects without a filter to show all
+            });
+
+            // Filter projects when the "Search" button is clicked
+            $('#searchProjectButton').on('click', function() {
+                const projectName = $('#projectSearch').val();
+                fetchProjects(projectName);  // Calls fetchProjects with a filter
+            });
+
+            // When a project from the list is selected
+            $(document).on('click', '#projectList li', function() {
+                const projectId = $(this).data('id');  // Get project ID
+                $('#projectList').hide();              // Hide project list
+                $('#timelogSection').show();           // Show timelog section
+
+                // AJAX call to fetch timelogs for the selected project
+                $.ajax({
+                    url: '/project_timelogs',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ project_id: projectId }),
+                    success: function(data) {
+                        console.log("Timelogs loaded:", data);  // Debugging line
+
+                        $('#timelogResults').empty();
+                        for (let author in data) {
+                            $('#timelogResults').append(`<h3>${author}</h3><ul>`);
+                            data[author].forEach(log => {
+                                $('#timelogResults').append(`<li>${log.issue_id}: ${log.time_spent} on ${log.created}</li>`);
+                            });
+                            $('#timelogResults').append('</ul>');
+                        }
+                    },
+                    error: function(err) {
+                        console.log("Error loading timelogs", err);  // Debugging line
+                        $('#timelogResults').html('<p>Error fetching timelogs</p>');
+                    }
+                });
+            });
+        });
+
+        $(document).ready(function() {
+            // Fetch complete report when the button is clicked
+            $('#generateCompleteReport').on('click', function() {
+                const selectedDate = $('#logDate').val();  // Format remains YYYY-MM-DD
+
+                // Collect selected fields
+                const selectedFields = [];
+                $('input[name="fields"]:checked').each(function() {
+                    selectedFields.push($(this).val());
+                });
+
+                // Convert selected fields to query parameters
+                const fieldsParam = selectedFields.map(field => `fields=${field}`).join('&');
+                
+                // Send AJAX request with converted date and selected fields
+                $.get(`/all_employees_timelogs?date=${selectedDate}&${fieldsParam}`, function(data) {
+                    console.log("Complete report loaded:", data);  // Debugging line
+
+                    $('#completeReportResults').empty();
+                    $('#completeReportSection').show();
+
+                    if (Object.keys(data).length === 0) {
+                        $('#completeReportResults').html('<p>No records found for the selected date and fields.</p>');
+                    } else {
+                        for (let author in data) {
+                            $('#completeReportResults').append(`<h3>${author}</h3><ul>`);
+                            data[author].forEach(log => {
+                                $('#completeReportResults').append(`
+                                    <li>
+                                        Issue ID: ${log.issue_id} - ${log.summary || 'N/A'}
+                                        <br>Status: ${log.status || 'N/A'} 
+                                        <br>Time Spent: ${log.time_spent} 
+                                        <br>Created: ${log.created} 
+                                        <br>Last Updated: ${log.updated || 'N/A'}
+                                    </li>
+                                `);
+                            });
+                            $('#completeReportResults').append('</ul>');
+                        }
+                    }
+                }).fail(function() {
+                    console.log("Failed to load complete report");
+                    alert("Error loading complete report. Please check your backend.");
+                });
+            });
+        });
+        $(document).ready(function() {
+    $('#fetchLogs').on('click', function() {
+        const employeeName = $('#employeeName').val();
+        const selectedDate = $('#logDate').val();  // Date is already in YYYY-MM-DD format
+
+        if (!employeeName) {
+            alert("Please enter the employee name or ID.");
+            return;
+        }
+
+        const selectedFields = [];
+        $('input[name="fields"]:checked').each(function() {
+            selectedFields.push($(this).val());
+        });
+        const fieldsParam = selectedFields.map(field => `fields=${field}`).join('&');
+
+        // Send AJAX request with employee name, date, and selected fields
+        $.get(`/employee_timelogs?employee=${employeeName}&date=${selectedDate}&${fieldsParam}`, function(data) {
+            $('#workLogs').empty();
+            $('#workLogSection').show();
+
+            if (data.logs.length === 0) {
+                $('#workLogs').html('<p>No records found.</p>');
+            } else {
+                // Display total hours at the top
+                $('#workLogs').append(`<h3>Total Hours for ${selectedDate}: ${data.total_hours.toFixed(2)} hours</h3>`);
+
+                // Display individual logs
+                data.logs.forEach(log => {
+                    $('#workLogs').append(`
+                        <div>
+                            <strong>Ticket:</strong> ${log.issue_key || 'N/A'} - ${log.summary || 'N/A'}<br>
+                            <strong>Project:</strong> ${log.project || 'N/A'}<br>
+                            <strong>Issue Type:</strong> ${log.issue_type || 'N/A'}<br>
+                            <strong>Status:</strong> ${log.status || 'N/A'}<br>
+                            <strong>Worklog ID:</strong> ${log.worklog_id || 'N/A'}<br>
+                            <strong>Time Spent:</strong> ${log.time_spent || 'N/A'}<br>
+                            <strong>Log Date:</strong> ${log.created || 'N/A'}<br><br>
+                        </div>
+                    `);
+                });
+            }
+        }).fail(function() {
+            alert("Error fetching work logs. Please check the backend.");
+        });
+    });
+});
+
+
+    </script>
+</body>
+</html>
