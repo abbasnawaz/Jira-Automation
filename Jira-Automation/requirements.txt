@@ -1,0 +1,8 @@
+numpy
+scipy
+pandas
+matplotlib
+gunicorn
+spacy
+streamlit
+en_core_web_lg
